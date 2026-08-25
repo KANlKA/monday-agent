@@ -6,49 +6,42 @@ This is the ONLY place raw file data is touched - the running agent
 always queries Monday.com live, never these files.
 
 Usage:
-    1. Put Deal_funnel_Data.xlsx and Work_Order_Tracker_Data.xlsx in this
+    1. Put Deal funnel Data.xlsx and Work_Order_Tracker Data.xlsx in this
        backend/ folder (or edit the paths below).
     2. export MONDAY_API_TOKEN=xxxx   (or put it in a .env file)
     3. python seed_monday.py
     4. Copy the printed board IDs into your .env file.
 """
 import os
+from datetime import date, datetime
+from pathlib import Path
 import time
-import pandas as pd
 from dotenv import load_dotenv
+from openpyxl import load_workbook
 
 load_dotenv()
 
 from monday_client import MondayClient  # noqa: E402
 
-DEALS_FILE = "Deal_funnel_Data.xlsx"
-WO_FILE = "Work_Order_Tracker_Data.xlsx"
-
-# Monday.com column type per assignment column. Falls back to "text" for
-# anything not listed. Extend this if you add columns later.
-STATUS_COLUMNS = {
-    "Deal Status", "Execution Status", "Invoice Status", "Collection status",
-    "Billing Status", "WO Status (billed)", "Closure Probability", "Deal Stage",
-}
-
+BASE_DIR = Path(__file__).resolve().parent
+DEALS_FILE = BASE_DIR / "Deal funnel Data.xlsx"
+WO_FILE = BASE_DIR / "Work_Order_Tracker Data.xlsx"
 
 def col_type_for(colname):
     lc = colname.lower()
     if "date" in lc:
         return "date"
-    if colname in STATUS_COLUMNS:
-        return "status"
     if any(k in lc for k in ["value", "amount", "quantity", "qty"]):
         return "numbers"
     return "text"
 
 
-def build_board(monday, board_name, df):
+def build_board(monday, board_name, columns):
     board_id = monday.create_board(board_name)
     print(f"Created board '{board_name}' -> id {board_id}")
     col_ids = {}
-    name_col = df.columns[0]  # first column becomes the item's built-in "name"
-    for c in df.columns:
+    name_col = columns[0]  # first column becomes the item's built-in "name"
+    for c in columns:
         if c == name_col:
             continue
         ctype = col_type_for(c)
@@ -63,15 +56,27 @@ def build_board(monday, board_name, df):
     return board_id, name_col, col_ids
 
 
+def is_blank(value):
+    return value is None or value == ""
+
+
+def format_date(value):
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d")
+    if isinstance(value, date):
+        return value.isoformat()
+    return datetime.fromisoformat(str(value)).strftime("%Y-%m-%d")
+
+
 def row_to_column_values(row, col_ids):
     values = {}
     for c, (cid, ctype) in col_ids.items():
         v = row.get(c)
-        if pd.isna(v) or v == "":
+        if is_blank(v):
             continue
         if ctype == "date":
             try:
-                values[cid] = {"date": pd.to_datetime(v).strftime("%Y-%m-%d")}
+                values[cid] = {"date": format_date(v)}
             except Exception:
                 pass
         elif ctype == "numbers":
@@ -79,27 +84,36 @@ def row_to_column_values(row, col_ids):
                 values[cid] = str(float(v))
             except Exception:
                 pass
-        elif ctype == "status":
-            values[cid] = {"label": str(v)[:75]}  # monday label length guard
         else:
             values[cid] = str(v)[:2000]
     return values
 
 
+def read_excel_rows(file_path, header_row=0):
+    workbook = load_workbook(file_path, read_only=True, data_only=True)
+    worksheet = workbook.active
+    rows = list(worksheet.iter_rows(values_only=True))
+    headers = list(rows[header_row])
+    data = []
+    for values in rows[header_row + 1:]:
+        if all(is_blank(value) for value in values):
+            continue
+        row = dict(zip(headers, values))
+        if row.get(headers[0]) == headers[0]:
+            continue
+        data.append(row)
+    return headers, data
+
+
 def seed(file_path, board_name, header_row=0):
-    df = pd.read_excel(file_path, header=header_row)
-    df = df.dropna(how="all")
-    name_col = df.columns[0]
-    # Drop rows that are stray repeated header rows leaked into the data
-    df = df[df[name_col] != name_col]
-    df = df.reset_index(drop=True)
+    columns, rows = read_excel_rows(file_path, header_row)
 
     monday = MondayClient()
-    board_id, name_col, col_ids = build_board(monday, board_name, df)
+    board_id, name_col, col_ids = build_board(monday, board_name, columns)
 
-    total = len(df)
-    for i, row in df.iterrows():
-        item_name = str(row[name_col]) if pd.notna(row[name_col]) else f"Row {i}"
+    total = len(rows)
+    for i, row in enumerate(rows):
+        item_name = str(row[name_col]) if not is_blank(row.get(name_col)) else f"Row {i}"
         cvs = row_to_column_values(row, col_ids)
         try:
             monday.create_item(board_id, item_name, cvs)

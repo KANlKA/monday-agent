@@ -20,15 +20,20 @@ class MondayClient:
             "API-Version": "2024-10",
         }
 
-    def execute(self, query, variables=None, retries=3):
+    def execute(self, query, variables=None, retries=5):
         last_err = None
         for attempt in range(retries):
-            resp = requests.post(
-                MONDAY_API_URL,
-                json={"query": query, "variables": variables or {}},
-                headers=self.headers,
-                timeout=30,
-            )
+            try:
+                resp = requests.post(
+                    MONDAY_API_URL,
+                    json={"query": query, "variables": variables or {}},
+                    headers=self.headers,
+                    timeout=30,
+                )
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                last_err = e
+                time.sleep(1.5 * (attempt + 1))
+                continue
             if resp.status_code == 429:
                 time.sleep(2 * (attempt + 1))
                 continue

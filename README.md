@@ -51,9 +51,9 @@ live pull from Monday.com the first time, then caches in memory until
    MONDAY_WORKORDERS_BOARD_ID=...
    ```
 
-### 2. Anthropic API
+### 2. Groq API (free)
 
-Get a key from console.anthropic.com and add it to `.env` as `ANTHROPIC_API_KEY`.
+Get a free key from console.groq.com/keys and add it to `.env` as `GROQ_API_KEY`.
 
 ### 3. Run the backend
 

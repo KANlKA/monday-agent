@@ -10,13 +10,14 @@ calls answer it, and turn the results into a clear, honest narrative
 """
 import os
 import json
-import anthropic
+from groq import Groq
 import pandas as pd
 
 from monday_client import MondayClient
 from data_tools import items_to_dataframe, clean_deals, clean_work_orders, data_quality_report
 
-client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+client = Groq(api_key=os.environ["GROQ_API_KEY"])
+MODEL = "llama-3.3-70b-versatile"
 monday = MondayClient()
 
 DEALS_BOARD_ID = os.environ["MONDAY_DEALS_BOARD_ID"]
@@ -41,7 +42,7 @@ def _filter(df, filters):
     return out
 
 
-TOOLS = [
+TOOLS_RAW = [
     {
         "name": "query_deals",
         "description": "Filter and summarize the Deals board (sales pipeline). Returns row count, total pipeline value, an optional breakdown, and sample rows. Use this for revenue pipeline, sector performance, deal stage/status questions.",
@@ -102,6 +103,19 @@ TOOLS = [
         "description": "Force a fresh pull from Monday.com. Use only if the user explicitly asks for the latest/live data.",
         "input_schema": {"type": "object", "properties": {}},
     },
+]
+
+# Groq/OpenAI-style function tool format
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": t["name"],
+            "description": t["description"],
+            "parameters": t["input_schema"],
+        },
+    }
+    for t in TOOLS_RAW
 ]
 
 
@@ -203,33 +217,33 @@ Rules:
 
 
 def chat(messages):
-    """messages: running conversation as Anthropic message list. Returns (answer_text, updated_messages)."""
+    """messages: running conversation as OpenAI/Groq-style message list (no system message
+    included - it's added here). Returns (answer_text, updated_messages)."""
+    full = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
     while True:
-        resp = client.messages.create(
-            model="claude-sonnet-4-6",
+        resp = client.chat.completions.create(
+            model=MODEL,
             max_tokens=2000,
-            system=SYSTEM_PROMPT,
             tools=TOOLS,
-            messages=messages,
+            messages=full,
         )
-        messages = messages + [{"role": "assistant", "content": resp.content}]
+        msg = resp.choices[0].message
+        full.append({"role": "assistant", "content": msg.content, "tool_calls": msg.tool_calls})
 
-        if resp.stop_reason != "tool_use":
-            text = "".join(b.text for b in resp.content if b.type == "text")
-            return text, messages
+        if not msg.tool_calls:
+            # strip the system message before handing history back to the caller
+            return msg.content, full[1:]
 
-        tool_results = []
-        for block in resp.content:
-            if block.type == "tool_use":
-                try:
-                    result = run_tool(block.name, block.input)
-                except Exception as e:
-                    result = {"error": str(e)}
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result, default=str),
-                    }
-                )
-        messages = messages + [{"role": "user", "content": tool_results}]
+        for tc in msg.tool_calls:
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+                result = run_tool(tc.function.name, args)
+            except Exception as e:
+                result = {"error": str(e)}
+            full.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": json.dumps(result, default=str),
+                }
+            )
