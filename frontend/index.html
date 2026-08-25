@@ -39,6 +39,11 @@
   .row.a .bubble { background: #eef0f3; color: #1a1a1a; border-bottom-left-radius: 4px; }
   .row.a .bubble.error { background: #fde8e8; color: #a12626; }
   .row.a .bubble.pending { color: #888; font-style: italic; }
+  .bubble p { margin: 0 0 8px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble ul, .bubble ol { margin: 4px 0 8px; padding-left: 20px; }
+  .bubble li { margin-bottom: 4px; }
+  .bubble strong { color: #14305c; }
 
   .inputbar { display: flex; gap: 8px; }
   #msg {
@@ -91,6 +96,7 @@
   <button id="sendBtn" onclick="send()">Ask</button>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <script>
   const API_BASE = ""; // same-origin: frontend is served by the backend itself
   const log = document.getElementById("log");
@@ -107,6 +113,10 @@
     log.appendChild(row);
     log.scrollTop = log.scrollHeight;
     return bubble;
+  }
+
+  function renderMarkdown(bubble, text) {
+    bubble.innerHTML = marked.parse(text);
   }
 
   function ask(el) {
@@ -133,11 +143,11 @@
       try { data = JSON.parse(raw); } catch { data = null; }
 
       if (!resp.ok || !data) {
-        pending.textContent = `Something went wrong (HTTP ${resp.status}). ${data && data.detail ? data.detail : "Check the backend logs."}`;
+        pending.textContent = `Had trouble getting a response (HTTP ${resp.status}). This is usually a brief network hiccup — try asking again.`;
         pending.classList.add("error");
       } else {
         pending.classList.remove("pending");
-        pending.textContent = data.answer;
+        renderMarkdown(pending, data.answer);
       }
     } catch (e) {
       pending.classList.remove("pending");

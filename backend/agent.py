@@ -16,7 +16,7 @@ import pandas as pd
 from monday_client import MondayClient
 from data_tools import items_to_dataframe, clean_deals, clean_work_orders, data_quality_report
 
-client = Groq(api_key=os.environ["GROQ_API_KEY"])
+client = Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=2, timeout=60.0)
 MODEL = "openai/gpt-oss-120b"
 monday = MondayClient()
 
@@ -218,17 +218,31 @@ Rules:
 """
 
 
+def _create_completion_with_retry(messages, retries=5):
+    import time
+    last_err = None
+    for attempt in range(retries):
+        try:
+            return client.chat.completions.create(
+                model=MODEL,
+                max_tokens=2000,
+                tools=TOOLS,
+                messages=messages,
+            )
+        except Exception as e:
+            last_err = e
+            if attempt < retries - 1:
+                time.sleep(min(2 * (attempt + 1), 10))
+                continue
+            raise last_err
+
+
 def chat(messages):
     """messages: running conversation as OpenAI/Groq-style message list (no system message
     included - it's added here). Returns (answer_text, updated_messages)."""
     full = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
     while True:
-        resp = client.chat.completions.create(
-            model=MODEL,
-            max_tokens=2000,
-            tools=TOOLS,
-            messages=full,
-        )
+        resp = _create_completion_with_retry(full)
         msg = resp.choices[0].message
         full.append({"role": "assistant", "content": msg.content, "tool_calls": msg.tool_calls})
 
