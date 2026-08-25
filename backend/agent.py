@@ -17,7 +17,7 @@ from monday_client import MondayClient
 from data_tools import items_to_dataframe, clean_deals, clean_work_orders, data_quality_report
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "openai/gpt-oss-120b"
 monday = MondayClient()
 
 DEALS_BOARD_ID = os.environ["MONDAY_DEALS_BOARD_ID"]
@@ -49,12 +49,12 @@ TOOLS_RAW = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "sector": {"type": "string", "description": "e.g. Mining, Powerline, Renewables, Aviation, Railways"},
-                "deal_status": {"type": "string", "description": "Open, Won, Dead, On Hold"},
-                "deal_stage": {"type": "string", "description": "e.g. 'B. Sales Qualified Leads', 'F. Negotiations'"},
-                "owner_code": {"type": "string"},
+                "sector": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "e.g. Mining, Powerline, Renewables, Aviation, Railways"},
+                "deal_status": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "Open, Won, Dead, On Hold"},
+                "deal_stage": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "e.g. 'B. Sales Qualified Leads', 'F. Negotiations'"},
+                "owner_code": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                 "group_by": {
-                    "type": "string",
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
                     "description": "One of: Sector/service, Deal Status, Deal Stage, Owner code, Closure Probability - sums deal value per group",
                 },
             },
@@ -66,10 +66,10 @@ TOOLS_RAW = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "sector": {"type": "string"},
-                "execution_status": {"type": "string", "description": "e.g. Completed, Not Started, Executed until current month"},
+                "sector": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                "execution_status": {"anyOf": [{"type": "string"}, {"type": "null"}], "description": "e.g. Completed, Not Started, Executed until current month"},
                 "group_by": {
-                    "type": "string",
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
                     "description": "One of: Sector, Execution Status, Type of Work - sums receivable amount per group",
                 },
             },
@@ -206,8 +206,10 @@ Rules:
 - This data is real-world messy (missing values, inconsistent labels). When a field you relied on has significant
   gaps (check data_quality_report or the significant_gaps you're given), state that caveat briefly and plainly -
   don't hide it, but don't over-explain it either.
-- Lead with a direct, founder-level answer (a number or a clear verdict) in the first sentence or two.
-  Follow with 2-4 short bullets of supporting context or risk flags. Avoid dumping raw tables unless asked.
+- Lead with a direct, founder-level answer (a number or a clear verdict) in the first sentence — plain text, not bolded.
+  Follow with a short, FLAT bulleted list (3-5 bullets, no nested sub-bullets, no bullet inside a bullet) of supporting
+  context or risk flags. Bold only the 1-2 most important numbers in the whole answer, not every figure or label.
+  Avoid dumping raw tables unless asked. Keep it scannable, not dense.
 - If a query is ambiguous (e.g. "this quarter", "recent"), state the assumption you're using in one line and
   proceed - don't block on a clarifying question unless you genuinely cannot produce a useful answer without it.
 - All currency figures are masked/anonymized but internally consistent - relative comparisons and totals are valid.

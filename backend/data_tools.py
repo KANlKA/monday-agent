@@ -34,8 +34,9 @@ def _drop_stray_header_rows(df, header_like_cols):
 
 def _clean_text_col(df, col):
     if col in df.columns:
-        df[col] = df[col].astype(str).str.strip()
-        df.loc[df[col].isin(NULL_LIKE), col] = None
+        cleaned = df[col].astype(str).str.strip()
+        cleaned = cleaned.where(~cleaned.isin(NULL_LIKE), None)
+        df[col] = cleaned
     return df
 
 
