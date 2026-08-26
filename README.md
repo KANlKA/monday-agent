@@ -77,4 +77,4 @@ Or open `frontend/index.html` in a browser (edit `API_BASE` if deploying).
 
 Any Python host works (Render, Railway, Fly.io free tiers). Point it at
 `backend/main.py`, set the four env vars, expose port 8000/`$PORT`, and update
-`frontend/index.html`'s `API_BASE` to the deployed URL.
+`frontend/index.html`'s `API_BASE` to the deployed URL
